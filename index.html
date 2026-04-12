@@ -451,8 +451,8 @@ let currentView = 'grid';
 
 const COL = {
   timestamp: 0, marca: 1, montadora: 2, modelo: 3,
-  ano_carro: 4, ano_lanc: 5, serie: 6, numero_serie: 7,
-  cor: 8, condicao: 9, preco: 10, foto: 11
+  ano_carro: 4, ano_lanc: 5, serie: 6,
+  cor: 7, condicao: 8, preco: 9, foto: 10
 };
 
 function extractDriveId(raw) {
@@ -586,7 +586,6 @@ function openModal(idx) {
     { label: 'Ano de lançamento', val: r[COL.ano_lanc] },
     { label: 'Escala', val: '1:64' },
     { label: 'Série', val: r[COL.serie] },
-    { label: 'Número na série', val: r[COL.numero_serie] },
     { label: 'Cor', val: r[COL.cor] },
     { label: 'Condição', val: r[COL.condicao] },
     { label: 'Preço pago', val: formatPrice(r[COL.preco]) },
