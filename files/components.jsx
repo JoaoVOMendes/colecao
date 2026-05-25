@@ -106,7 +106,7 @@ function Hero({ items, total, invested, lacradas, featured, onFeaturedClick }) {
   return (
     <section className="hero">
       <div className="hero__left">
-        <div className="hero__eyebrow">Garage · 1:64 · São Paulo</div>
+        <div className="hero__eyebrow">Garage · 1:64 · Brasília</div>
         <h1 className="hero__title">
           Minha<br/><em>coleção</em>
         </h1>
