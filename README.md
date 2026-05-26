@@ -100,5 +100,14 @@ O ID fica salvo automaticamente no navegador — nas próximas visitas a coleç�
 
 ```
 colecao/
-└── index.html    ← página completa (tudo em um único arquivo)
+├── index.html          ← entrypoint
+├── app.jsx             ← componente raiz (React)
+├── components.jsx      ← TopBar, Hero, Row, Card, ViewToggle, ícones
+├── views.jsx           ← FiltersBar, DetailDrawer, AddDrawer, PhotoField
+├── settings.jsx        ← drawer de configuração (Sheets + Apps Script)
+├── wiki-import.jsx     ← busca no Hot Wheels Fandom Wiki
+├── sheets.js           ← leitura via gviz/CSV + escrita via Apps Script
+├── styles.css          ← estilos
+├── data.js             ← dados de demonstração (fallback)
+└── apps-script.gs      ← código que vai no Apps Script Web App
 ```
