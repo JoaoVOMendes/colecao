@@ -11,6 +11,13 @@ function App() {
   });
   const [sort, setSort] = useS("recent");
   const [advancedOpen, setAdvancedOpen] = useS(false);
+  const [view, setView] = useS(() => {
+    try { return localStorage.getItem("colecao.view") || "list"; }
+    catch (e) { return "list"; }
+  });
+  useE(() => {
+    try { localStorage.setItem("colecao.view", view); } catch (e) {}
+  }, [view]);
   const [selected, setSelected] = useS(null);
   const [addOpen, setAddOpen] = useS(false);
   const [settingsOpen, setSettingsOpen] = useS(false);
@@ -166,9 +173,12 @@ function App() {
 
           <div className="section-head">
             <h2 className="section-head__title">Catálogo</h2>
-            <div className="section-head__count">
-              {filtered.length} {filtered.length === 1 ? "peça" : "peças"}
-              {filtered.length !== items.length && ` de ${items.length}`}
+            <div className="section-head__right">
+              <ViewToggle view={view} onChange={setView} />
+              <div className="section-head__count">
+                {filtered.length} {filtered.length === 1 ? "peça" : "peças"}
+                {filtered.length !== items.length && ` de ${items.length}`}
+              </div>
             </div>
           </div>
 
@@ -183,6 +193,12 @@ function App() {
 
           {filtered.length === 0 ? (
             <div className="empty">Nenhuma peça encontrada com esses filtros.</div>
+          ) : view === "grid" ? (
+            <div className="grid">
+              {filtered.map((item) => (
+                <Card key={item.id} item={item} onClick={setSelected} />
+              ))}
+            </div>
           ) : (
             <div className="list">
               {filtered.map((item, idx) => (

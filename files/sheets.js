@@ -267,68 +267,152 @@ async function appendToSheet(scriptUrl, row) {
   }
 }
 
+/* ───────── Public: upload photo via Apps Script ─────────
+   Reads the File as base64, POSTs to the Apps Script web app with
+   action="upload". Apps Script salva no Drive (pasta "Coleção - Fotos"),
+   marca como público e devolve URL pública pra usar em <img src="">.
+
+   Diferente de appendToSheet, esse fetch usa mode: "cors" porque a gente
+   precisa LER a resposta. Funciona com Apps Script web app deployado
+   com acesso "Anyone" + Content-Type: text/plain (simple CORS request). */
+async function uploadPhoto(scriptUrl, file, onProgress) {
+  if (!scriptUrl) throw new Error("Apps Script não configurado. Conecte na engrenagem.");
+  if (!file) throw new Error("Nenhum arquivo");
+  if (!/^image\//i.test(file.type)) throw new Error("Arquivo precisa ser imagem");
+
+  // Limite client-side pra não estourar quota do Apps Script (50MB POST limit).
+  // Base64 infla ~33%, então 30MB raw é o teto seguro.
+  const MAX_BYTES = 30 * 1024 * 1024;
+  if (file.size > MAX_BYTES) {
+    throw new Error("Imagem muito grande (" + (file.size/1024/1024).toFixed(1) + "MB). Máximo 30MB.");
+  }
+
+  if (onProgress) onProgress({ phase: "reading" });
+  const dataUrl = await new Promise(function(resolve, reject) {
+    const reader = new FileReader();
+    reader.onload = function() { resolve(reader.result); };
+    reader.onerror = function() { reject(new Error("Falha lendo arquivo")); };
+    reader.readAsDataURL(file);
+  });
+  const comma = dataUrl.indexOf(",");
+  const meta = dataUrl.slice(0, comma);
+  const base64 = dataUrl.slice(comma + 1);
+  const mimeMatch = meta.match(/data:([^;]+)/);
+  const mimeType = (mimeMatch && mimeMatch[1]) || file.type || "image/jpeg";
+
+  const ext = mimeType.split("/")[1] || "jpg";
+  const fileName = file.name || ("colecao-" + Date.now() + "." + ext);
+
+  if (onProgress) onProgress({ phase: "uploading" });
+  const res = await fetch(scriptUrl, {
+    method: "POST",
+    mode: "cors",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({
+      action: "upload",
+      fileName: fileName,
+      mimeType: mimeType,
+      data: base64,
+    }),
+  });
+  if (!res.ok) throw new Error("Apps Script respondeu " + res.status);
+  const text = await res.text();
+  let json;
+  try { json = JSON.parse(text); }
+  catch (e) { throw new Error("Resposta do Apps Script não é JSON: " + text.slice(0, 200)); }
+
+  if (!json.ok) throw new Error(json.error || "Upload falhou");
+  if (onProgress) onProgress({ phase: "done", url: json.url });
+  return json.url;
+}
+
 /* ───────── Apps Script template for the setup wizard ─────────
    Server-side dedupe via submitId + LockService + CacheService.
    This is the authoritative defense against duplicates — it works regardless
    of what the client does (doubletap, fire-and-forget, two paths, page reload
    mid-request, etc.). */
-const APPS_SCRIPT_TEMPLATE = `function doPost(e) {
+const APPS_SCRIPT_TEMPLATE = `const UPLOAD_FOLDER_NAME = "Coleção - Fotos";
+
+function doPost(e) {
   const lock = LockService.getScriptLock();
   try { lock.waitLock(10000); } catch (err) {
     return _json({ ok: false, error: "busy" });
   }
-
   try {
     const data = JSON.parse(e.postData.contents);
-
-    // ─── Dedupe: use client's submitId if present, else content hash ────
-    const sig = data.submitId || _contentSig(data);
-    const cache = CacheService.getScriptCache();
-    if (cache.get(sig)) {
-      return _json({ ok: true, deduped: true });
-    }
-    cache.put(sig, "1", 60); // remember this submitId for 60 seconds
-
-    // ─── Map payload fields to your sheet's columns (any order) ─────────
-    const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn())
-      .getValues()[0].map(h => String(h || "").toLowerCase().trim());
-
-    const patterns = {
-      name:         /modelo|^nome|^name|^model$/,
-      brand:        /^marca|^brand/,
-      make:         /montadora|fabricante|manufact/,
-      year:         /ano do carro|^ano$|^year$|car year/,
-      yearReleased: /lançamento|lancamento|release/,
-      series:       /série|^serie|coleção|colecao|^series$|linha/,
-      color:        /^cor$|^color/,
-      price:        /preço|preco|valor|^price/,
-      status:       /condição|condicao|status|estado/,
-      rarity:       /raridade|rarity/,
-      note:         /nota|obs|observ|coment/,
-      image:        /foto|imagem|image|url|link/,
-    };
-
-    const row = new Array(headers.length).fill("");
-    if (/carimbo|timestamp|data/.test(headers[0])) row[0] = new Date();
-
-    for (let i = 0; i < headers.length; i++) {
-      for (const field in patterns) {
-        if (patterns[field].test(headers[i])) {
-          row[i] = data[field] !== undefined ? data[field] : "";
-          break;
-        }
-      }
-    }
-
-    sheet.appendRow(row);
-    return _json({ ok: true });
-
+    if (data.action === "upload") return _handleUpload(data);
+    return _handleAppend(data);
   } catch (err) {
     return _json({ ok: false, error: String(err) });
   } finally {
     lock.releaseLock();
   }
+}
+
+function _handleAppend(data) {
+  const sig = data.submitId || _contentSig(data);
+  const cache = CacheService.getScriptCache();
+  if (cache.get(sig)) return _json({ ok: true, deduped: true });
+  cache.put(sig, "1", 60);
+
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn())
+    .getValues()[0].map(h => String(h || "").toLowerCase().trim());
+
+  const patterns = {
+    name:         /modelo|^nome|^name|^model$/,
+    brand:        /^marca|^brand/,
+    make:         /montadora|fabricante|manufact/,
+    year:         /ano do carro|^ano$|^year$|car year/,
+    yearReleased: /lançamento|lancamento|release/,
+    series:       /série|^serie|coleção|colecao|^series$|linha/,
+    color:        /^cor$|^color/,
+    price:        /preço|preco|valor|^price/,
+    status:       /condição|condicao|status|estado/,
+    rarity:       /raridade|rarity/,
+    note:         /nota|obs|observ|coment/,
+    image:        /foto|imagem|image|url|link/,
+  };
+
+  const row = new Array(headers.length).fill("");
+  if (/carimbo|timestamp|data/.test(headers[0])) row[0] = new Date();
+  for (let i = 0; i < headers.length; i++) {
+    for (const field in patterns) {
+      if (patterns[field].test(headers[i])) {
+        row[i] = data[field] !== undefined ? data[field] : "";
+        break;
+      }
+    }
+  }
+  sheet.appendRow(row);
+  return _json({ ok: true });
+}
+
+function _handleUpload(data) {
+  if (!data.data) return _json({ ok: false, error: "Sem dados de imagem" });
+  const mimeType = data.mimeType || "image/jpeg";
+  const fileName = data.fileName || ("colecao-" + Date.now() + ".jpg");
+  const folder = _getUploadFolder();
+  const blob = Utilities.newBlob(Utilities.base64Decode(data.data), mimeType, fileName);
+  const file = folder.createFile(blob);
+  try {
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  } catch (err) {
+    return _json({ ok: false, error: "Salvei mas não consegui marcar como público: " + String(err), fileId: file.getId() });
+  }
+  const fileId = file.getId();
+  return _json({
+    ok: true,
+    fileId: fileId,
+    url: "https://drive.google.com/thumbnail?id=" + fileId + "&sz=w800",
+    rawUrl: "https://drive.google.com/uc?export=view&id=" + fileId,
+  });
+}
+
+function _getUploadFolder() {
+  const folders = DriveApp.getFoldersByName(UPLOAD_FOLDER_NAME);
+  if (folders.hasNext()) return folders.next();
+  return DriveApp.createFolder(UPLOAD_FOLDER_NAME);
 }
 
 function _contentSig(data) {
@@ -341,11 +425,10 @@ function _contentSig(data) {
 }
 
 function _json(obj) {
-  return ContentService
-    .createTextOutput(JSON.stringify(obj))
+  return ContentService.createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
 }`;
 
 window.Sheets = {
-  SheetsStore, fetchSheet, appendToSheet, APPS_SCRIPT_TEMPLATE,
+  SheetsStore, fetchSheet, appendToSheet, uploadPhoto, APPS_SCRIPT_TEMPLATE,
 };

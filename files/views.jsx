@@ -1,16 +1,48 @@
 /* Views: Filters, Detail drawer, Add drawer */
 const { useState: useStateV, useMemo: useMemoV, useEffect: useEffectV } = React;
 
-/* ───────── Photo field (URL input + preview) ───────── */
+/* ───────── Photo field (URL input + camera/file upload + preview) ───────── */
 function PhotoField({ value, onChange, normalize }) {
   const [loading, setLoading] = React.useState(false);
   const [failed, setFailed] = React.useState(false);
+  const [uploading, setUploading] = React.useState(false);
+  const [uploadError, setUploadError] = React.useState("");
+  const cameraInputRef = React.useRef(null);
+  const fileInputRef = React.useRef(null);
   const normalized = normalize ? normalize(value) : value;
+  const scriptUrl = window.Sheets.SheetsStore.getScriptUrl();
+  const canUpload = !!scriptUrl;
 
   React.useEffect(() => {
     setFailed(false);
     if (normalized) setLoading(true);
   }, [normalized]);
+
+  const handleFile = async (file) => {
+    if (!file) return;
+    setUploadError("");
+    setUploading(true);
+    try {
+      const url = await window.Sheets.uploadPhoto(scriptUrl, file);
+      onChange(url);
+    } catch (err) {
+      console.error("Upload falhou:", err);
+      setUploadError(String(err.message || err));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const onCameraChange = (e) => {
+    const f = e.target.files && e.target.files[0];
+    handleFile(f);
+    e.target.value = ""; // permite re-selecionar a mesma foto
+  };
+  const onFileChange = (e) => {
+    const f = e.target.files && e.target.files[0];
+    handleFile(f);
+    e.target.value = "";
+  };
 
   return (
     <div className="photo-field">
@@ -22,7 +54,7 @@ function PhotoField({ value, onChange, normalize }) {
             referrerPolicy="no-referrer"
             onLoad={() => setLoading(false)}
             onError={() => { setLoading(false); setFailed(true); }}
-            style={{ opacity: loading ? 0.3 : 1 }}
+            style={{ opacity: loading || uploading ? 0.3 : 1 }}
           />
         ) : (
           <div className="photo-field__placeholder">
@@ -34,26 +66,97 @@ function PhotoField({ value, onChange, normalize }) {
             <span>Pré-visualização da foto</span>
           </div>
         )}
-        {failed && (
+        {uploading && (
+          <div className="photo-field__overlay">
+            <div className="photo-field__spinner" />
+            <span>Enviando ao Drive…</span>
+          </div>
+        )}
+        {failed && !uploading && (
           <div className="photo-field__error">Não consegui carregar — verifique se o Drive está público.</div>
         )}
       </div>
       <div className="photo-field__body">
         <label className="field__label">Foto da miniatura</label>
+
+        <div className="photo-field__actions">
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            style={{ display: "none" }}
+            onChange={onCameraChange}
+          />
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: "none" }}
+            onChange={onFileChange}
+          />
+          <button
+            type="button"
+            className="btn btn--ghost btn--upload"
+            onClick={() => cameraInputRef.current && cameraInputRef.current.click()}
+            disabled={!canUpload || uploading}
+            title={canUpload ? "Tirar foto com a câmera" : "Conecte o Apps Script primeiro"}
+          >
+            <CameraIcon />
+            <span>Tirar foto</span>
+          </button>
+          <button
+            type="button"
+            className="btn btn--ghost btn--upload"
+            onClick={() => fileInputRef.current && fileInputRef.current.click()}
+            disabled={!canUpload || uploading}
+            title={canUpload ? "Escolher arquivo da galeria" : "Conecte o Apps Script primeiro"}
+          >
+            <FolderIcon />
+            <span>Arquivo</span>
+          </button>
+        </div>
+
         <input
           className="field__input"
           value={value}
           onChange={e => onChange(e.target.value)}
-          placeholder="Cole o link do Drive ou URL da imagem"
+          placeholder="…ou cole o link do Drive / URL da imagem"
+          disabled={uploading}
         />
-        <div className="photo-field__hint">
-          Aceita link de "Compartilhar" do Drive — converto pra thumbnail
-          automaticamente. Pra URLs do Drive, o arquivo precisa estar como
-          "Qualquer pessoa com o link".
-        </div>
+
+        {uploadError && (
+          <div className="photo-field__hint" style={{ color: "var(--flame)" }}>
+            {uploadError}
+          </div>
+        )}
+        {!canUpload && (
+          <div className="photo-field__hint">
+            Upload direto fica disponível depois que você conectar o Apps Script
+            (engrenagem no topo).
+          </div>
+        )}
+        {canUpload && !uploadError && (
+          <div className="photo-field__hint">
+            Tira foto ou escolhe um arquivo — vai pro seu Drive (pasta "Coleção - Fotos")
+            e a URL aparece aqui automaticamente.
+          </div>
+        )}
       </div>
     </div>
   );
+}
+
+function CameraIcon() {
+  return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+    <path d="M3 7h3l2-3h8l2 3h3v13H3z"/>
+    <circle cx="12" cy="13" r="3.5"/>
+  </svg>;
+}
+function FolderIcon() {
+  return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+    <path d="M3 6h6l2 2h10v11H3z"/>
+  </svg>;
 }
 
 /* ───────── Filters bar (chips + advanced) ───────── */
@@ -98,27 +201,7 @@ function FiltersBar({
               <span className="chip__count">{o.count}</span>
             </button>
           ))}
-          {showRarity && <div style={{ width: 1, background: "var(--border-1)", margin: "0 4px", alignSelf: "stretch" }} />}
-          {showRarity && (
-            <>
-              <button
-                className="chip"
-                aria-pressed={filters.rarity === "all"}
-                onClick={() => setFilters({ ...filters, rarity: "all" })}
-              >Todas raridades</button>
-              {rarityChips.map(o => (
-                <button
-                  key={o.v}
-                  className="chip"
-                  aria-pressed={filters.rarity === o.v}
-                  onClick={() => setFilters({ ...filters, rarity: o.v })}
-                >
-                  {o.label}
-                  <span className="chip__count">{rarityCounts[o.v]}</span>
-                </button>
-              ))}
-            </>
-          )}
+          {/* Rarity chips desativadas — campo segue no dado/filtro, só removido da UI */}
         </div>
         <button
           className="advanced-toggle"
@@ -263,7 +346,6 @@ function DetailDrawer({ item, onClose }) {
             <div className="detail__brand">{data.brand}{data.year ? ` · ${data.year}` : ""}</div>
             <div className="detail__badges">
               <StatusBadge status={data.status} />
-              <Rarity rarity={data.rarity} />
             </div>
           </div>
           <div className="detail__grid">

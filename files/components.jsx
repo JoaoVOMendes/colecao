@@ -179,9 +179,72 @@ function Row({ item, index, onClick }) {
             <span style={{ color: "var(--gold)", fontStyle: "italic", fontFamily: "var(--serif)" }}>{item.priceRaw}</span> :
             <span style={{ color: "var(--text-4)" }}>—</span>)
         }
-        <div><Rarity rarity={item.rarity} /></div>
       </div>
       <div className="row__arrow"><ArrowIcon /></div>
+    </div>
+  );
+}
+
+/* ───────── Grid card ───────── */
+function Card({ item, onClick }) {
+  const displayName = item.fullName || item.name;
+  return (
+    <div
+      className="card"
+      onClick={() => onClick(item)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={e => (e.key === "Enter" || e.key === " ") && onClick(item)}
+    >
+      <div className="card__img">
+        <CarArt tint={item.color} shape={item.shape} image={item.image} brand={item.brand} />
+      </div>
+      <div className="card__body">
+        <div className="card__series">{item.series}</div>
+        <div className="card__name">{displayName}</div>
+        <div className="card__meta">
+          <span>{item.brand}</span>
+          {item.year && <span>{item.year}</span>}
+        </div>
+        <div className="card__foot">
+          <StatusBadge status={item.status} />
+          <div className="card__price">
+            {item.price > 0 ? formatBRL(item.price) :
+              (item.priceRaw && /rifa|brinde|premio|prêmio/i.test(item.priceRaw) ?
+                <span style={{ color: "var(--gold)", fontStyle: "italic", fontFamily: "var(--serif)" }}>{item.priceRaw}</span> :
+                <span style={{ color: "var(--text-4)" }}>—</span>)
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ───────── View toggle (Lista / Grade) ───────── */
+function ViewToggle({ view, onChange }) {
+  return (
+    <div className="view-toggle" role="tablist" aria-label="Visualização">
+      <button
+        type="button"
+        role="tab"
+        aria-selected={view === "list"}
+        className="view-toggle__btn"
+        onClick={() => onChange("list")}
+        title="Lista"
+      >
+        <ListIcon /><span>Lista</span>
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={view === "grid"}
+        className="view-toggle__btn"
+        onClick={() => onChange("grid")}
+        title="Grade"
+      >
+        <GridIcon /><span>Grade</span>
+      </button>
     </div>
   );
 }
@@ -218,10 +281,23 @@ function GearIcon() {
     <path d="M8 1.5v1.8M8 12.7v1.8M3.4 3.4l1.27 1.27M11.33 11.33l1.27 1.27M1.5 8h1.8M12.7 8h1.8M3.4 12.6l1.27-1.27M11.33 4.67l1.27-1.27"/>
   </svg>;
 }
+function ListIcon() {
+  return <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+    <path d="M3 4h10M3 8h10M3 12h10"/>
+  </svg>;
+}
+function GridIcon() {
+  return <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
+    <rect x="2.5" y="2.5" width="4.5" height="4.5" rx="0.8"/>
+    <rect x="9" y="2.5" width="4.5" height="4.5" rx="0.8"/>
+    <rect x="2.5" y="9" width="4.5" height="4.5" rx="0.8"/>
+    <rect x="9" y="9" width="4.5" height="4.5" rx="0.8"/>
+  </svg>;
+}
 
 Object.assign(window, {
   CarArt, StatusBadge, Rarity, RARITY_LEVELS,
   formatBRL, formatBRLShort,
-  TopBar, Hero, Row,
-  SearchIcon, PlusIcon, ArrowIcon, CloseIcon, ChevronIcon, GearIcon,
+  TopBar, Hero, Row, Card, ViewToggle,
+  SearchIcon, PlusIcon, ArrowIcon, CloseIcon, ChevronIcon, GearIcon, ListIcon, GridIcon,
 });
