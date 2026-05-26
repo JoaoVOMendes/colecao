@@ -20,6 +20,7 @@ function App() {
   }, [view]);
   const [selected, setSelected] = useS(null);
   const [addOpen, setAddOpen] = useS(false);
+  const [editingPiece, setEditingPiece] = useS(null);
   const [settingsOpen, setSettingsOpen] = useS(false);
   const [toast, setToast] = useS(null);
   const [usingDemo, setUsingDemo] = useS(false);
@@ -59,7 +60,7 @@ function App() {
   /* Toast feedback after sheets sync */
   useE(() => {
     const handler = (e) => {
-      setToast(e.detail.name);
+      setToast({ name: e.detail.name, action: e.detail.action || "add" });
       setTimeout(() => setToast(null), 3200);
     };
     window.addEventListener("sheets-synced", handler);
@@ -105,12 +106,31 @@ function App() {
 
   const totalInvested = useM(() => items.reduce((s, i) => s + i.price, 0), [items]);
 
-  /* IMPORTANT: addItem is the optimistic LOCAL update only.
-     AddDrawer is the single owner of the Sheets write — it calls appendToSheet
-     itself and only invokes onAdd after the write resolves. Calling
-     appendToSheet here too would fire a duplicate POST per submission. */
+  /* IMPORTANT: addItem/updateItem são updates LOCAIS otimistas.
+     AddDrawer é o único dono da escrita no Sheets — só chama onAdd/onUpdate
+     depois que appendToSheet/updatePiece resolveram. */
   const addItem = (item) => {
-    setItems(prev => [item, ...prev]);
+    setItems(prev => [{ ...item, hasStableId: true }, ...prev]);
+  };
+  const updateItem = (item) => {
+    setItems(prev => prev.map(p => p.id === item.id ? { ...p, ...item, hasStableId: true } : p));
+    if (selected && selected.id === item.id) setSelected({ ...selected, ...item });
+  };
+  const openEdit = (piece) => {
+    setSelected(null);
+    setEditingPiece(piece);
+    setAddOpen(true);
+  };
+  const handleDelete = async (piece) => {
+    const scriptUrl = window.Sheets.SheetsStore.getScriptUrl();
+    if (scriptUrl && piece.hasStableId) {
+      await window.Sheets.deletePiece(scriptUrl, piece.id);
+    }
+    setItems(prev => prev.filter(p => p.id !== piece.id));
+    setSelected(null);
+    window.dispatchEvent(new CustomEvent("sheets-synced", {
+      detail: { name: piece.fullName || piece.name, action: "delete" }
+    }));
   };
 
   const sheetConfigured = !!window.Sheets.SheetsStore.getSheetId();
@@ -222,11 +242,18 @@ function App() {
         </div>
       </footer>
 
-      <DetailDrawer item={selected} onClose={() => setSelected(null)} />
+      <DetailDrawer
+        item={selected}
+        onClose={() => setSelected(null)}
+        onEdit={openEdit}
+        onDelete={handleDelete}
+      />
       <AddDrawer
         open={addOpen}
-        onClose={() => setAddOpen(false)}
+        onClose={() => { setAddOpen(false); setEditingPiece(null); }}
         onAdd={addItem}
+        onUpdate={updateItem}
+        editing={editingPiece}
         writeConfigured={writeConfigured}
       />
       <SettingsDrawer
@@ -242,9 +269,14 @@ function App() {
           </svg>
         </div>
         <div>
-          <div className="toast__title">{toast} adicionado</div>
+          <div className="toast__title">
+            {toast && toast.name} {toast && (
+              toast.action === "delete" ? "excluído" :
+              toast.action === "update" ? "atualizado" : "adicionado"
+            )}
+          </div>
           <div className="toast__sub">
-            {writeConfigured ? "Linha gravada no Sheets" : "Adicionado localmente"}
+            {writeConfigured ? "Linha gravada no Sheets" : "Atualizado localmente"}
           </div>
         </div>
       </div>

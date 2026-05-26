@@ -1418,6 +1418,37 @@ img { display: block; max-width: 100%; }
   color: var(--text-3);
   line-height: 1.45;
 }
+
+/* ============ DETAIL DRAWER ACTIONS ============ */
+.detail__actions {
+  display: flex;
+  gap: 10px;
+  padding-top: 18px;
+  margin-top: 18px;
+  border-top: 1px solid var(--border-1);
+}
+.detail__actions .btn {
+  flex: 1;
+  justify-content: center;
+}
+.btn--danger {
+  color: oklch(0.75 0.18 25);
+  border: 1px solid oklch(from oklch(0.75 0.18 25) l c h / 0.35);
+  background: oklch(from oklch(0.75 0.18 25) l c h / 0.06);
+  padding: 8px 14px;
+  font-size: 13px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn--danger:hover {
+  background: oklch(from oklch(0.75 0.18 25) l c h / 0.14);
+  border-color: oklch(from oklch(0.75 0.18 25) l c h / 0.5);
+}
+.btn--danger:disabled, .btn--ghost:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 .photo-field__actions {
   display: flex;
   gap: 8px;

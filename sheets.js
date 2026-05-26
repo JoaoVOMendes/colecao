@@ -61,6 +61,7 @@ function parseCSV(text) {
 
 /* ───────── Header mapping (PT-BR + EN tolerant) ───────── */
 const HEADER_MAP = {
+  id:     ["id", "uuid", "identificador", "piece id"],
   name:   ["modelo", "nome", "name", "model"],
   brand:  ["marca", "brand"],
   make:   ["montadora", "fabricante", "manufacturer", "make"],
@@ -186,7 +187,7 @@ async function fetchSheet(sheetId, sheetName) {
   if (rows.length < 2) return [];
   const headers = rows[0];
   const idx = {};
-  ["name","brand","make","year","yearReleased","yearFallback","series","color","shape","price","status","rarity","note","image"]
+  ["id","name","brand","make","year","yearReleased","yearFallback","series","color","shape","price","status","rarity","note","image"]
     .forEach(k => { idx[k] = findHeader(headers, k); });
 
   if (idx.name < 0) throw new Error("Planilha sem coluna 'Modelo' ou 'Nome' reconhecida.");
@@ -206,8 +207,12 @@ async function fetchSheet(sheetId, sheetName) {
       const yearRel = parseInt(r[idx.yearReleased]);
       const yearAny = parseInt(r[idx.yearFallback]);
       const year = yearCar || yearAny || yearRel || null;
+      const sheetId = (idx.id >= 0 && r[idx.id]) ? String(r[idx.id]).trim() : "";
+      const displayId = String(i + 1).padStart(3, "0");
       return {
-        id: String(i + 1).padStart(3, "0"),
+        id: sheetId || displayId,        // UUID estável se houver, senão índice
+        displayId,                        // sempre o índice 001/002… pro hero
+        hasStableId: !!sheetId,
         name: displayName,
         make,
         fullName,
@@ -216,6 +221,7 @@ async function fetchSheet(sheetId, sheetName) {
         yearReleased: yearRel || null,
         series: (idx.series >= 0 && r[idx.series]) || "Mainline",
         color: normalizeColor(idx.color >= 0 ? r[idx.color] : "", fullName),
+        colorRaw: (idx.color >= 0 && r[idx.color]) ? String(r[idx.color]).trim() : "",
         shape: normalizeShape(idx.shape >= 0 ? r[idx.shape] : "", fullName),
         price: parsePriceBR(idx.price >= 0 ? r[idx.price] : 0),
         priceRaw: (idx.price >= 0 ? r[idx.price] : "") || "",
@@ -263,6 +269,48 @@ async function appendToSheet(scriptUrl, row) {
   } catch (e) {
     console.error("Sheets append failed:", e);
     _inFlight.delete(key);
+    return false;
+  }
+}
+
+/* ───────── ID generation (UUID estável por peça) ───────── */
+function generatePieceId() {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  return "p-" + Date.now() + "-" + Math.random().toString(36).slice(2, 10);
+}
+
+/* ───────── Public: update piece via Apps Script ───────── */
+async function updatePiece(scriptUrl, piece) {
+  if (!scriptUrl) return false;
+  if (!piece.id) throw new Error("Peça sem ID — não dá pra editar");
+  try {
+    await fetch(scriptUrl, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ action: "update", ...piece }),
+    });
+    return true;
+  } catch (e) {
+    console.error("Update falhou:", e);
+    return false;
+  }
+}
+
+/* ───────── Public: delete piece via Apps Script ───────── */
+async function deletePiece(scriptUrl, id) {
+  if (!scriptUrl) return false;
+  if (!id) throw new Error("ID obrigatório pra deletar");
+  try {
+    await fetch(scriptUrl, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ action: "delete", id }),
+    });
+    return true;
+  } catch (e) {
+    console.error("Delete falhou:", e);
     return false;
   }
 }
@@ -430,5 +478,6 @@ function _json(obj) {
 }`;
 
 window.Sheets = {
-  SheetsStore, fetchSheet, appendToSheet, uploadPhoto, APPS_SCRIPT_TEMPLATE,
+  SheetsStore, fetchSheet, appendToSheet, updatePiece, deletePiece, uploadPhoto,
+  generatePieceId, APPS_SCRIPT_TEMPLATE,
 };

@@ -305,7 +305,7 @@ function AdvancedPanel({ items, filters, setFilters }) {
 }
 
 /* ───────── Detail drawer ───────── */
-function DetailDrawer({ item, onClose }) {
+function DetailDrawer({ item, onClose, onEdit, onDelete }) {
   const open = !!item;
   // Keep last item visible while closing animation runs
   const [cached, setCached] = React.useState(item);
@@ -400,28 +400,67 @@ function DetailDrawer({ item, onClose }) {
               <em>“{data.note}”</em>
             </div>
           )}
+          {(onEdit || onDelete) && (
+            <div className="detail__actions">
+              {onEdit && (
+                <button
+                  className="btn btn--ghost"
+                  onClick={() => onEdit(data)}
+                  disabled={!data.hasStableId}
+                  title={data.hasStableId ? "Editar peça" : "Faltam IDs antigos — rode backfillIds() no Apps Script"}
+                >Editar</button>
+              )}
+              {onDelete && (
+                <button
+                  className="btn btn--danger"
+                  onClick={() => {
+                    if (window.confirm(`Excluir "${data.fullName || data.name}"? Não dá pra desfazer.`)) {
+                      onDelete(data);
+                    }
+                  }}
+                  disabled={!data.hasStableId}
+                  title={data.hasStableId ? "Excluir peça" : "Faltam IDs antigos — rode backfillIds() no Apps Script"}
+                >Excluir</button>
+              )}
+            </div>
+          )}
         </div>
       </aside>
     </>
   );
 }
 
-/* ───────── Add drawer ───────── */
-function AddDrawer({ open, onClose, onAdd, writeConfigured }) {
+/* ───────── Add drawer (cria + edita) ───────── */
+function AddDrawer({ open, onClose, onAdd, onUpdate, writeConfigured, editing }) {
+  const isEditing = !!editing;
   const blank = {
     name: "", make: "", brand: "Hot Wheels",
     year: "", yearReleased: "",
     series: "", color: "",
     price: "", status: "lacrado",
     image: "",
+    id: "",
   };
-  const [form, setForm] = React.useState(blank);
+  const buildInitial = () => editing ? {
+    name: editing.name || "",
+    make: editing.make || "",
+    brand: editing.brand || "Hot Wheels",
+    year: editing.year || "",
+    yearReleased: editing.yearReleased || "",
+    series: editing.series || "",
+    color: editing.colorRaw || editing.color || "",
+    price: editing.price || "",
+    status: editing.status || "lacrado",
+    image: editing.image || "",
+    id: editing.id || "",
+  } : blank;
+  const [form, setForm] = React.useState(buildInitial);
   const [syncing, setSyncing] = React.useState(false);
-  const submittingRef = React.useRef(false);  // synchronous lock — beats React's async state
+  const submittingRef = React.useRef(false);
 
   React.useEffect(() => {
-    if (open) { setForm(blank); setSyncing(false); submittingRef.current = false; }
-  }, [open]);
+    if (open) { setForm(buildInitial()); setSyncing(false); submittingRef.current = false; }
+  }, [open, editing && editing.id]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -448,35 +487,41 @@ function AddDrawer({ open, onClose, onAdd, writeConfigured }) {
   };
 
   const submit = () => {
-    if (submittingRef.current) return;          // blocks fast double-click
+    if (submittingRef.current) return;
     if (!form.name && !form.make) return;
     submittingRef.current = true;
     setSyncing(true);
     const fullName = form.make ? `${form.make.trim()} ${form.name.trim()}`.trim() : form.name.trim();
+    const pieceId = isEditing ? form.id : window.Sheets.generatePieceId();
     const payload = {
       ...form,
-      id: String(Date.now()).slice(-4),
-      submitId: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,  // dedupe key for Apps Script
+      id: pieceId,
+      submitId: pieceId,
       fullName,
       name: form.name || form.make,
       image: normalizeImage(form.image),
       price: parseFloat(form.price) || 0,
       year: parseInt(form.year) || null,
       yearReleased: parseInt(form.yearReleased) || null,
-      shape: "muscle",
-      rarity: "comum",
-      note: "",
+      shape: editing ? editing.shape : "muscle",
+      rarity: editing ? editing.rarity : "comum",
+      note: editing ? editing.note : "",
     };
     const scriptUrl = window.Sheets.SheetsStore.getScriptUrl();
     const doneWrite = scriptUrl
-      ? window.Sheets.appendToSheet(scriptUrl, payload)
+      ? (isEditing
+          ? window.Sheets.updatePiece(scriptUrl, payload)
+          : window.Sheets.appendToSheet(scriptUrl, payload))
       : Promise.resolve(false);
 
     Promise.resolve(doneWrite).then(() => {
-      onAdd(payload);
+      if (isEditing) onUpdate(payload);
+      else onAdd(payload);
       setSyncing(false);
       onClose();
-      window.dispatchEvent(new CustomEvent("sheets-synced", { detail: { name: fullName } }));
+      window.dispatchEvent(new CustomEvent("sheets-synced", {
+        detail: { name: fullName, action: isEditing ? "update" : "add" }
+      }));
     });
   };
 
@@ -485,7 +530,7 @@ function AddDrawer({ open, onClose, onAdd, writeConfigured }) {
       <div className="drawer-backdrop" data-open={open} onClick={onClose} />
       <aside className="drawer" data-open={open} aria-hidden={!open}>
         <div className="drawer__head">
-          <div className="drawer__title">Nova peça</div>
+          <div className="drawer__title">{isEditing ? "Editar peça" : "Nova peça"}</div>
           <button className="drawer__close" onClick={onClose} aria-label="Fechar">
             <CloseIcon />
           </button>
@@ -581,7 +626,7 @@ function AddDrawer({ open, onClose, onAdd, writeConfigured }) {
             disabled={syncing || (!form.name && !form.make)}
             style={{ opacity: (syncing || (!form.name && !form.make)) ? 0.5 : 1 }}
           >
-            {syncing ? "Salvando…" : "Adicionar à coleção"}
+            {syncing ? "Salvando…" : (isEditing ? "Salvar alterações" : "Adicionar à coleção")}
           </button>
         </div>
       </aside>
