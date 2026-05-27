@@ -69,10 +69,20 @@ img { display: block; max-width: 100%; }
 .app {
   max-width: 1320px;
   margin: 0 auto;
-  padding: 0 32px 120px;
+  padding:
+    env(safe-area-inset-top)
+    max(32px, env(safe-area-inset-right))
+    calc(120px + env(safe-area-inset-bottom))
+    max(32px, env(safe-area-inset-left));
 }
 @media (max-width: 720px) {
-  .app { padding: 0 18px 80px; }
+  .app {
+    padding:
+      env(safe-area-inset-top)
+      max(16px, env(safe-area-inset-right))
+      calc(96px + env(safe-area-inset-bottom))
+      max(16px, env(safe-area-inset-left));
+  }
 }
 
 /* ============ TOP BAR ============ */
@@ -162,9 +172,17 @@ img { display: block; max-width: 100%; }
 }
 
 @media (max-width: 720px) {
-  .topbar__search { display: none; }
-  .topbar__brand { font-size: 18px; }
+  /* Topbar empilha em 2 linhas: marca+ações em cima, busca abaixo */
+  .topbar { flex-wrap: wrap; padding: 12px 16px; gap: 10px; }
+  .topbar__brand { font-size: 18px; flex: 1; }
+  .topbar__search {
+    order: 10;
+    flex-basis: 100%;
+    max-width: none;
+    margin: 0;
+  }
   .btn span.btn__label { display: none; }
+  .btn { padding: 9px 11px; }
 }
 
 /* ============ HERO ============ */
@@ -192,7 +210,7 @@ img { display: block; max-width: 100%; }
 }
 .hero__title {
   font-family: var(--serif);
-  font-size: clamp(56px, 9vw, 132px);
+  font-size: clamp(42px, 9vw, 132px);
   line-height: 0.92;
   letter-spacing: -0.025em;
   font-weight: 400;
@@ -297,8 +315,13 @@ img { display: block; max-width: 100%; }
   .hero { grid-template-columns: 1fr; gap: 40px; padding: 36px 0 44px; }
 }
 @media (max-width: 720px) {
+  .hero { padding: 28px 0 36px; gap: 28px; }
+  .hero__left { gap: 22px; }
+  .hero__sub { font-size: 14px; line-height: 1.5; }
   .hero__stats { grid-template-columns: repeat(2, 1fr); gap: 20px; padding-top: 20px; }
   .stat__value { font-size: 36px; }
+  /* Esconde o destaque grande no celular — economiza ~400px de scroll antes do catálogo */
+  .hero__featured { display: none; }
 }
 
 /* ============ CAR ARTWORK PLACEHOLDER ============ */
@@ -358,6 +381,12 @@ img { display: block; max-width: 100%; }
   display: flex; justify-content: space-between; align-items: end;
   padding: 56px 0 4px;
   gap: 24px;
+  flex-wrap: wrap;
+}
+@media (max-width: 720px) {
+  .section-head { padding: 36px 0 4px; gap: 14px; align-items: start; }
+  .section-head__title { font-size: 28px; }
+  .section-head__right { width: 100%; justify-content: space-between; }
 }
 .section-head__title {
   font-family: var(--serif);
@@ -1601,4 +1630,51 @@ img { display: block; max-width: 100%; }
 }
 @media (max-width: 720px) {
   .foot { flex-direction: column; gap: 14px; padding-top: 48px; }
+}
+
+/* ============ FAB (Floating Action Button) — só mobile ============ */
+.fab {
+  display: none;
+}
+@media (max-width: 720px) {
+  .fab {
+    display: grid;
+    place-items: center;
+    position: fixed;
+    right: calc(18px + env(safe-area-inset-right));
+    bottom: calc(20px + env(safe-area-inset-bottom));
+    z-index: 60;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--flame);
+    color: var(--bg-0);
+    border: 0;
+    box-shadow: 0 8px 24px oklch(0 0 0 / 0.4), 0 2px 6px oklch(0 0 0 / 0.3);
+    cursor: pointer;
+    transition: transform 0.15s, background 0.15s;
+  }
+  .fab:hover, .fab:active { transform: translateY(-2px); }
+  .fab svg { width: 22px; height: 22px; stroke-width: 2.4; }
+  /* Esconde o "Adicionar peça" da topbar — substituído pelo FAB */
+  .topbar .btn--flame { display: none; }
+}
+
+/* ============ DRAWERS no mobile — menos padding, mais conteúdo ============ */
+@media (max-width: 720px) {
+  .drawer__head { padding: 14px 18px; }
+  .drawer__close { width: 36px; height: 36px; }
+  .detail__head { padding: 22px 18px 16px; gap: 12px; }
+  .detail__art { aspect-ratio: 16/10; }
+  .detail__art .car-art__svg { max-width: 320px; }
+  .detail__name { font-size: 26px; }
+  .detail__grid { padding: 0 18px 18px; }
+  .detail__grid > div { padding: 12px 0; }
+  .detail__grid > div:nth-child(even) { padding-left: 14px; }
+  .detail__notes { margin: 0 18px 18px; }
+  .detail__actions { margin: 0 18px 18px; padding-top: 14px; }
+  .form-body { padding: 18px; gap: 16px; }
+  .form-row { grid-template-columns: 1fr; gap: 14px; }
+  .form-foot { padding: 14px 18px; gap: 10px; flex-wrap: wrap; }
+  .form-foot .sheets-status { flex-basis: 100%; order: -1; }
 }

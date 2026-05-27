@@ -242,6 +242,16 @@ function App() {
         </div>
       </footer>
 
+      {/* FAB — só aparece no mobile via CSS @media */}
+      <button
+        type="button"
+        className="fab"
+        aria-label="Adicionar peça"
+        onClick={() => setAddOpen(true)}
+      >
+        <PlusIcon />
+      </button>
+
       <DetailDrawer
         item={selected}
         onClose={() => setSelected(null)}
